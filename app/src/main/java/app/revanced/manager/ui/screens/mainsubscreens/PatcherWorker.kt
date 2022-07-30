@@ -6,8 +6,13 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.drawable.Icon
+import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.runtime.mutableStateOf
 import androidx.core.content.ContextCompat
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -28,12 +33,16 @@ import app.revanced.patcher.Patcher
 import app.revanced.patcher.PatcherOptions
 import app.revanced.patcher.data.Data
 import app.revanced.patcher.extensions.PatchExtensions.patchName
+import app.revanced.patcher.logging.Logger
 import app.revanced.patcher.patch.Patch
 import app.revanced.patcher.util.patch.implementation.DexPatchBundle
 import dalvik.system.DexClassLoader
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+
 
 class PatcherWorker(context: Context, parameters: WorkerParameters) :
     CoroutineWorker(context, parameters) {
@@ -52,6 +61,10 @@ class PatcherWorker(context: Context, parameters: WorkerParameters) :
             ?: throw IllegalArgumentException("selectedPatches is missing")
         val patchBundleFile = inputData.getString("patchBundleFile")
             ?: throw IllegalArgumentException("patchBundleFile is missing")
+        val publicSourceDir = inputData.getString("publicSourceDir")
+            ?: throw IllegalArgumentException("publicSourceDir is missing")
+        val packageName = inputData.getString("packageName")
+            ?: throw IllegalArgumentException("packageName is missing")
 
         val notificationIntent = Intent(applicationContext, PatcherWorker::class.java)
         val pendingIntent: PendingIntent = PendingIntent.getActivity(
@@ -72,7 +85,7 @@ class PatcherWorker(context: Context, parameters: WorkerParameters) :
 
         setForeground(ForegroundInfo(1, notification))
         return try {
-            runPatcher(selectedPatches.toList(), patchBundleFile)
+            runPatcher(selectedPatches.toList(), patchBundleFile, packageName, publicSourceDir)
             Result.success()
         } catch (e: Exception) {
             Log.e(tag, "Error while patching", e)
@@ -85,7 +98,10 @@ class PatcherWorker(context: Context, parameters: WorkerParameters) :
     }
 
     private suspend fun runPatcher(
-        selectedPatches: List<String>, patchBundleFile: String
+        selectedPatches: List<String>,
+        patchBundleFile: String,
+        packageName: String,
+        publicSourceDir: String
     ): Boolean {
         val aaptPath = Aapt.binary(applicationContext).absolutePath
         val frameworkPath =
@@ -107,15 +123,12 @@ class PatcherWorker(context: Context, parameters: WorkerParameters) :
         val cacheDirectory = workdir.resolve("cache")
 
         try {
-            // TODO: Add back when split support is added to the Patcher.
-            // Log.d(tag, "Copying base.apk from ${info.packageName}")
-            // withContext(Dispatchers.IO) {
-            //     Files.copy(
-            //         File(info.publicSourceDir).toPath(),
-            //         inputFile.toPath(),
-            //         StandardCopyOption.REPLACE_EXISTING
-            //     )
-            // }
+            Log.d(tag, "Copying base.apk from ${packageName}")
+            Files.copy(
+                File(publicSourceDir).toPath(),
+                inputFile.toPath(),
+                StandardCopyOption.REPLACE_EXISTING
+            )
 
             Log.d(tag, "Creating patcher")
             val patcher = Patcher(
@@ -124,7 +137,7 @@ class PatcherWorker(context: Context, parameters: WorkerParameters) :
                     patchResources = true,
                     aaptPath = aaptPath,
                     frameworkFolderLocation = frameworkPath,
-                    logger = object : app.revanced.patcher.logging.Logger {
+                    logger = object : Logger {
                         override fun error(msg: String) {
                             Log.e(tag, msg)
                         }
@@ -177,6 +190,31 @@ class PatcherWorker(context: Context, parameters: WorkerParameters) :
             Log.d(tag, "Signing apk")
             Signer("ReVanced", "s3cur3p@ssw0rd").signApk(patchedFile, outputFile)
             Log.i(tag, "Successfully patched into $outputFile")
+            val downloadDir =
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+            val handler = Handler(Looper.getMainLooper())
+            if (applicationContext.checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
+                Files.move(
+                    outputFile.toPath(),
+                    File(downloadDir, "patched.apk").toPath(),
+                    StandardCopyOption.REPLACE_EXISTING
+                )
+                handler.post {
+                    Toast.makeText(
+                        applicationContext,
+                        R.string.patching_succeeded,
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            } else {
+                handler.post {
+                    Toast.makeText(
+                        applicationContext,
+                        R.string.storage_permission_missing,
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
         } finally {
             Log.d(tag, "Deleting workdir")
             // workdir.deleteRecursively()

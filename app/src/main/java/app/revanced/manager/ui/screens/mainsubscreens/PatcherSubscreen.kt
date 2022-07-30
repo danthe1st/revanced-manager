@@ -1,9 +1,15 @@
 package app.revanced.manager.ui.screens.mainsubscreens
 
+import android.Manifest
 import android.app.Application
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContract
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -18,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -233,19 +240,28 @@ class PatcherViewModel(val app: Application) : AndroidViewModel(app) {
     }
 
     fun startPatcher() {
-        WorkManager
-            .getInstance(app)
-            .enqueueUniqueWork(
-                "patching",
-                ExistingWorkPolicy.KEEP,
-                OneTimeWorkRequest.Builder(PatcherWorker::class.java)
-                    .setInputData(
-                        androidx.work.Data.Builder()
-                            .putStringArray("selectedPatches", selectedPatches.toTypedArray())
-                            .putString("patchBundleFile", patchBundleFile)
-                            .build()
-                    )
-                    .build()
-            )
+        val appInfo = getSelectedPackageInfo()?.applicationInfo
+        val publicSourceDir = appInfo?.publicSourceDir
+        if (publicSourceDir == null) {
+            Toast.makeText(app,R.string.ic_non_selected,Toast.LENGTH_LONG).show()
+        } else {//TODO request permissions
+            val packageName = appInfo.packageName
+            WorkManager
+                .getInstance(app)
+                .enqueueUniqueWork(
+                    "patching",
+                    ExistingWorkPolicy.KEEP,
+                    OneTimeWorkRequest.Builder(PatcherWorker::class.java)
+                        .setInputData(
+                            androidx.work.Data.Builder()
+                                .putStringArray("selectedPatches", selectedPatches.toTypedArray())
+                                .putString("patchBundleFile", patchBundleFile)
+                                .putString("publicSourceDir", publicSourceDir)
+                                .putString("packageName", packageName)
+                                .build()
+                        )
+                        .build()
+                )
+        }
     }
 }

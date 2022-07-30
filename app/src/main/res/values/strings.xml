@@ -65,4 +65,6 @@
     <string name="compatible_versions">Compatible app versions</string>
     <string name="patcher_notification_title">Patching</string>
     <string name="patcher_notification_message">ReVanced Manager is patching</string>
+    <string name="storage_permission_missing">Permission for accessing files is missing.</string>
+    <string name="patching_succeeded">Patching was successful. Please find the patched APK in your Downloads directory.</string>
 </resources>
