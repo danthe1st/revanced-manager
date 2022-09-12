@@ -118,7 +118,7 @@ dependencies {
 
     // Accompanist
     implementation("com.google.accompanist:accompanist-drawablepainter:0.24.8-beta")
-    implementation("com.google.accompanist:accompanist-systemuicontroller:0.24.13-rc")
+    implementation("com.google.accompanist:accompanist-systemuicontroller:0.26.3-beta")
 
     // libsu
 //    implementation("com.github.topjohnwu.libsu:core:4.0.3")
